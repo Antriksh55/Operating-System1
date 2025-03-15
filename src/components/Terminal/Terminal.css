@@ -1,0 +1,97 @@
+/* Terminal Styles */
+.os-terminal {
+  font-family: 'Courier New', monospace;
+  color: #f8f8f8;
+  background-color: #1a1a1a;
+  text-shadow: 0 0 1px rgba(255, 255, 255, 0.3);
+  letter-spacing: 0.05em;
+  position: relative;
+}
+
+.os-terminal .terminal-header {
+  user-select: none;
+  cursor: default;
+}
+
+.os-terminal::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.os-terminal::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+.os-terminal::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 4px;
+}
+
+.os-terminal::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}
+
+.os-terminal .terminal-prompt {
+  color: #5af78e;
+  user-select: none;
+}
+
+.os-terminal input {
+  caret-color: transparent;
+}
+
+/* Command output styles */
+.os-terminal .command-block {
+  position: relative;
+}
+
+.os-terminal .command-block::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -10px;
+  width: 2px;
+  background-color: rgba(100, 100, 100, 0.2);
+}
+
+.os-terminal .command-text {
+  color: #f8f8f8;
+  font-weight: 500;
+}
+
+.os-terminal .terminal-success {
+  color: #dcf8dc;
+}
+
+.os-terminal .terminal-error {
+  color: #fc5774;
+}
+
+/* Terminal animation effects */
+@keyframes blink {
+  0%, 49% {
+    opacity: 1;
+  }
+  50%, 100% {
+    opacity: 0;
+  }
+}
+
+/* Blur and scanline effect for authentic terminal feel */
+.os-terminal::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    rgba(18, 16, 16, 0) 50%, 
+    rgba(0, 0, 0, 0.1) 50%
+  );
+  background-size: 100% 4px;
+  pointer-events: none;
+  z-index: 10;
+  opacity: 0.15;
+} 

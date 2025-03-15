@@ -365,4 +365,209 @@ export class VirtualFileSystem {
   getCurrentDirectory() {
     return this.currentPath;
   }
+
+  // Set file/directory permissions
+  changePermissions(path, permissions) {
+    try {
+      const node = this._getNodeAtPath(path);
+      
+      if (!node) {
+        return { success: false, output: `chmod: cannot access '${path}': No such file or directory` };
+      }
+      
+      // Check if permissions is in octal format (e.g., "755")
+      if (/^[0-7]{3}$/.test(permissions)) {
+        // Convert octal to rwx format
+        const owner = parseInt(permissions[0], 8);
+        const group = parseInt(permissions[1], 8);
+        const others = parseInt(permissions[2], 8);
+        
+        let permString = '';
+        permString += (owner & 4) ? 'r' : '-';
+        permString += (owner & 2) ? 'w' : '-';
+        permString += (owner & 1) ? 'x' : '-';
+        permString += (group & 4) ? 'r' : '-';
+        permString += (group & 2) ? 'w' : '-';
+        permString += (group & 1) ? 'x' : '-';
+        permString += (others & 4) ? 'r' : '-';
+        permString += (others & 2) ? 'w' : '-';
+        permString += (others & 1) ? 'x' : '-';
+        
+        node.permissions = permString;
+      } else if (/^[rwx-]{9}$/.test(permissions)) {
+        // Direct rwx format
+        node.permissions = permissions;
+      } else {
+        return { success: false, output: `chmod: invalid mode: '${permissions}'` };
+      }
+      
+      node.modified = new Date();
+      
+      return { success: true, output: '' };
+    } catch (error) {
+      return { success: false, output: `chmod: ${error.message}` };
+    }
+  }
+
+  // Find files matching a pattern
+  findFiles(startDir, pattern) {
+    try {
+      const startNode = this._getNodeAtPath(startDir);
+      
+      if (!startNode) {
+        return { success: false, output: `find: '${startDir}': No such file or directory` };
+      }
+      
+      if (startNode.type !== 'directory') {
+        return { success: false, output: `find: '${startDir}': Not a directory` };
+      }
+      
+      // Convert pattern to regex (simple glob support)
+      const regexPattern = new RegExp('^' + pattern.replace(/\*/g, '.*').replace(/\?/g, '.') + '$');
+      
+      // Recursive function to search for files
+      const findMatchingFiles = (node, currentPath) => {
+        let results = [];
+        
+        if (node.type === 'directory') {
+          for (const [name, childNode] of Object.entries(node.children)) {
+            const childPath = this._joinPaths(currentPath, name);
+            
+            // Add this file/dir if it matches the pattern
+            if (regexPattern.test(name)) {
+              results.push(childPath);
+            }
+            
+            // Recursively search subdirectories
+            if (childNode.type === 'directory') {
+              results = results.concat(findMatchingFiles(childNode, childPath));
+            }
+          }
+        }
+        
+        return results;
+      };
+      
+      const matches = findMatchingFiles(startNode, startDir);
+      
+      if (matches.length === 0) {
+        return { success: true, output: '' };
+      }
+      
+      return { success: true, output: matches.join('\n') };
+    } catch (error) {
+      return { success: false, output: `find: ${error.message}` };
+    }
+  }
+
+  // Get file/directory details (for ls -l)
+  getFileDetails(path) {
+    try {
+      const node = this._getNodeAtPath(path);
+      
+      if (!node) {
+        return { success: false, output: `stat: cannot stat '${path}': No such file or directory` };
+      }
+      
+      const { permissions = 'rw-r--r--', size = 0, created, modified } = node;
+      const type = node.type === 'directory' ? 'd' : '-';
+      
+      const details = {
+        type,
+        permissions,
+        size: node.type === 'file' ? size : 4096, // Default directory size
+        created: created || new Date(),
+        modified: modified || new Date(),
+        name: path.split('/').pop() || path
+      };
+      
+      return { success: true, output: details };
+    } catch (error) {
+      return { success: false, output: `stat: ${error.message}` };
+    }
+  }
+
+  // Enhanced listDirectory to support different formats (e.g., ls -l)
+  listDirectory(path = '.', options = {}) {
+    const { longFormat = false } = options;
+    
+    try {
+      // Resolve the path to an absolute path
+      const absPath = this._resolvePath(path);
+      
+      // Get the directory node
+      const node = this._getNodeAtPath(absPath);
+      
+      // Check if the directory exists
+      if (!node) {
+        return { success: false, output: `ls: cannot access '${path}': No such file or directory` };
+      }
+      
+      // Check if it's actually a directory
+      if (node.type !== 'directory') {
+        return { success: false, output: `ls: cannot list '${path}': Not a directory` };
+      }
+      
+      // If directory is empty
+      if (Object.keys(node.children).length === 0) {
+        return { success: true, output: '' };
+      }
+      
+      // For simple listing, just return the names
+      if (!longFormat) {
+        return {
+          success: true,
+          output: Object.keys(node.children).sort().join('  ')
+        };
+      }
+      
+      // For long format (ls -l)
+      const details = Object.entries(node.children).map(([name, childNode]) => {
+        const type = childNode.type === 'directory' ? 'd' : '-';
+        const permissions = childNode.permissions || 'rw-r--r--';
+        const size = childNode.type === 'file' ? (childNode.size || 0) : 4096;
+        const date = new Date(childNode.modified || Date.now()).toLocaleString();
+        
+        return `${type}${permissions} ${size.toString().padStart(8)} ${date} ${name}`;
+      });
+      
+      return {
+        success: true,
+        output: details.sort().join('\n')
+      };
+    } catch (error) {
+      return { success: false, output: `ls: ${error.message}` };
+    }
+  }
+
+  // Resolve a path (canonicalize)
+  _resolvePath(path) {
+    // If it's already an absolute path
+    if (path.startsWith('/')) {
+      return this._normalizePath(path);
+    }
+    
+    // If it's a relative path
+    return this._normalizePath(this._joinPaths(this.currentPath, path));
+  }
+
+  // Normalize a path (remove . and .. segments)
+  _normalizePath(path) {
+    const segments = path.split('/').filter(Boolean);
+    const resultSegments = [];
+    
+    for (const segment of segments) {
+      if (segment === '.') {
+        // Current directory - do nothing
+      } else if (segment === '..') {
+        // Parent directory - pop the last segment
+        resultSegments.pop();
+      } else {
+        // Regular segment - add it
+        resultSegments.push(segment);
+      }
+    }
+    
+    return '/' + resultSegments.join('/');
+  }
 }

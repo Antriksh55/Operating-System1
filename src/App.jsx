@@ -5,6 +5,8 @@ import './App.css'
 import Terminal from './components/Terminal/Terminal'
 import Sidebar from './components/Sidebar/Sidebar'
 import HelpPanel from './components/HelpPanel/HelpPanel'
+import Hardware from './components/Hardware/Hardware'
+import ProcessManager from './components/Process/ProcessManager'
 
 function App() {
   const [activeView, setActiveView] = useState('terminal');
@@ -55,8 +57,8 @@ function App() {
         
         <main className="flex-1 overflow-auto p-4">
           {activeView === 'terminal' && <Terminal />}
-          {activeView === 'hardware' && <div className="terminal p-4 h-full">Hardware Monitor - Coming Soon</div>}
-          {activeView === 'processes' && <div className="terminal p-4 h-full">Process Manager - Coming Soon</div>}
+          {activeView === 'hardware' && <Hardware />}
+          {activeView === 'processes' && <ProcessManager />}
         </main>
 
         {showHelp && <HelpPanel onClose={toggleHelp} />}

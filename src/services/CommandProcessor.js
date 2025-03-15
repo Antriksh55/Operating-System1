@@ -32,6 +32,18 @@ export const processCommand = (commandString) => {
       return handleCat(args);
     case 'rm':
       return handleRm(args);
+    case 'cp':
+      return handleCp(args);
+    case 'mv':
+      return handleMv(args);
+    case 'chmod':
+      return handleChmod(args);
+    case 'pwd':
+      return handlePwd(args);
+    case 'find':
+      return handleFind(args);
+    case 'grep':
+      return handleGrep(args);
     
     // Process commands
     case 'ps':
@@ -40,59 +52,114 @@ export const processCommand = (commandString) => {
       return handleTop(args);
     case 'kill':
       return handleKill(args);
+    case 'nice':
+      return handleNice(args);
     
     // Hardware commands
     case 'memory':
       return handleMemory(args);
     case 'cpu':
       return handleCpu(args);
+    case 'disk':
+      return handleDisk(args);
+    case 'network':
+      return handleNetwork(args);
     
     // Unknown command
     default:
       return {
         success: false,
-        output: `Command not found: ${command}. Type 'help' for a list of available commands.`
+        output: `Command not found: ${command}\nType 'help' to see available commands.`
       };
   }
 };
 
-// Help command
+// Help command - show available commands
 const handleHelp = (args) => {
-  if (args.length === 0) {
-    return {
-      success: true,
-      output: [
-        'Available commands:',
-        '  help [command]   - Display help information',
-        '',
-        'File System:',
-        '  ls [dir]         - List directory contents',
-        '  cd <dir>         - Change the current directory',
-        '  mkdir <dir>      - Create a new directory',
-        '  touch <file>     - Create a new file',
-        '  cat <file>       - Display file contents',
-        '  rm <file/dir>    - Remove a file or directory',
-        '',
-        'Process Management:',
-        '  ps               - List all processes',
-        '  top              - Display system tasks',
-        '  kill <pid>       - Terminate a process',
-        '',
-        'Hardware:',
-        '  memory           - Display memory usage',
-        '  cpu              - Display CPU information',
-      ]
-    };
-  } else {
-    // Specific command help
-    const helpCommand = args[0].toLowerCase();
-    
-    // This could be expanded with more detailed help for each command
-    return {
-      success: true,
-      output: `Help for command '${helpCommand}': Not implemented yet. Try 'help' for general help.`
-    };
+  // If a specific command is provided, show help for that command
+  if (args.length > 0) {
+    const command = args[0].toLowerCase();
+    switch (command) {
+      case 'ls':
+        return { success: true, output: 'ls [directory] - List contents of a directory' };
+      case 'cd':
+        return { success: true, output: 'cd [directory] - Change current directory' };
+      case 'mkdir':
+        return { success: true, output: 'mkdir <directory> - Create a new directory' };
+      case 'touch':
+        return { success: true, output: 'touch <file> - Create a new empty file' };
+      case 'cat':
+        return { success: true, output: 'cat <file> - Display contents of a file' };
+      case 'rm':
+        return { success: true, output: 'rm [-r] <path> - Remove a file or directory (-r for recursive)' };
+      case 'cp':
+        return { success: true, output: 'cp <source> <destination> - Copy a file or directory' };
+      case 'mv':
+        return { success: true, output: 'mv <source> <destination> - Move/rename a file or directory' };
+      case 'chmod':
+        return { success: true, output: 'chmod <permissions> <file> - Change file permissions (e.g. chmod 755 file.txt)' };
+      case 'pwd':
+        return { success: true, output: 'pwd - Print current working directory' };
+      case 'find':
+        return { success: true, output: 'find <directory> -name <pattern> - Find files matching pattern' };
+      case 'grep':
+        return { success: true, output: 'grep <pattern> <file> - Search for pattern in file' };
+      case 'ps':
+        return { success: true, output: 'ps - List running processes' };
+      case 'top':
+        return { success: true, output: 'top - Display system processes in real time' };
+      case 'kill':
+        return { success: true, output: 'kill <pid> - Terminate a process by ID' };
+      case 'nice':
+        return { success: true, output: 'nice <priority> <pid> - Change process priority' };
+      case 'memory':
+        return { success: true, output: 'memory - Display memory usage statistics' };
+      case 'cpu':
+        return { success: true, output: 'cpu - Display CPU usage statistics' };
+      case 'disk':
+        return { success: true, output: 'disk - Display disk usage statistics' };
+      case 'network':
+        return { success: true, output: 'network - Display network interface statistics' };
+      default:
+        return { success: false, output: `No help available for: ${command}` };
+    }
   }
+
+  // Otherwise show general help
+  return {
+    success: true,
+    output: `
+Available commands:
+
+File System:
+  ls [directory]          - List contents of a directory
+  cd [directory]          - Change current directory
+  mkdir <directory>       - Create a new directory
+  touch <file>            - Create a new empty file
+  cat <file>              - Display contents of a file
+  rm [-r] <path>          - Remove a file or directory
+  cp <source> <dest>      - Copy a file or directory
+  mv <source> <dest>      - Move/rename a file or directory
+  chmod <perm> <file>     - Change file permissions
+  pwd                     - Print working directory
+  find <dir> -name <pat>  - Find files matching pattern
+  grep <pattern> <file>   - Search for pattern in file
+
+Process Management:
+  ps                      - List running processes
+  top                     - Display system processes
+  kill <pid>              - Terminate a process
+  nice <priority> <pid>   - Change process priority
+
+Hardware Monitoring:
+  memory                  - Display memory usage
+  cpu                     - Display CPU usage
+  disk                    - Display disk usage
+  network                 - Display network info
+
+Type 'help <command>' for more details on a specific command.
+`
+  };
 };
 
 // File system command handlers
@@ -373,5 +440,156 @@ const handleCpu = (args) => {
       success: false,
       output: `cpu: ${error.message}`
     };
+  }
+};
+
+// New command handlers
+const handleCp = (args) => {
+  if (args.length < 2) {
+    return { success: false, output: 'Usage: cp <source> <destination>' };
+  }
+  
+  try {
+    const source = args[0];
+    const destination = args[1];
+    
+    // Read the source file
+    const result = fs.readFile(source);
+    if (!result.success) {
+      return result;
+    }
+    
+    // Create or overwrite the destination file
+    return fs.writeFile(destination, result.content);
+  } catch (error) {
+    return { success: false, output: `cp: ${error.message}` };
+  }
+};
+
+const handleMv = (args) => {
+  if (args.length < 2) {
+    return { success: false, output: 'Usage: mv <source> <destination>' };
+  }
+  
+  try {
+    const source = args[0];
+    const destination = args[1];
+    
+    // Copy the file
+    const copyResult = handleCp([source, destination]);
+    if (!copyResult.success) {
+      return copyResult;
+    }
+    
+    // If copy successful, remove the source
+    return fs.remove(source);
+  } catch (error) {
+    return { success: false, output: `mv: ${error.message}` };
+  }
+};
+
+const handleChmod = (args) => {
+  if (args.length < 2) {
+    return { success: false, output: 'Usage: chmod <permissions> <file>' };
+  }
+  
+  try {
+    const permissions = args[0];
+    const filepath = args[1];
+    
+    return fs.changePermissions(filepath, permissions);
+  } catch (error) {
+    return { success: false, output: `chmod: ${error.message}` };
+  }
+};
+
+const handlePwd = () => {
+  try {
+    const currentDir = fs.getCurrentDirectory();
+    return { success: true, output: currentDir };
+  } catch (error) {
+    return { success: false, output: `pwd: ${error.message}` };
+  }
+};
+
+const handleFind = (args) => {
+  if (args.length < 3 || args[1] !== '-name') {
+    return { success: false, output: 'Usage: find <directory> -name <pattern>' };
+  }
+  
+  try {
+    const directory = args[0];
+    const pattern = args[2];
+    
+    return fs.findFiles(directory, pattern);
+  } catch (error) {
+    return { success: false, output: `find: ${error.message}` };
+  }
+};
+
+const handleGrep = (args) => {
+  if (args.length < 2) {
+    return { success: false, output: 'Usage: grep <pattern> <file>' };
+  }
+  
+  try {
+    const pattern = args[0];
+    const filepath = args[1];
+    
+    // Read the file
+    const readResult = fs.readFile(filepath);
+    if (!readResult.success) {
+      return readResult;
+    }
+    
+    // Search for pattern in content
+    const regex = new RegExp(pattern, 'g');
+    const lines = readResult.content.split('\n');
+    const matches = lines.filter(line => regex.test(line));
+    
+    if (matches.length === 0) {
+      return { success: true, output: '' };
+    }
+    
+    return { success: true, output: matches.join('\n') };
+  } catch (error) {
+    return { success: false, output: `grep: ${error.message}` };
+  }
+};
+
+const handleNice = (args) => {
+  if (args.length < 2) {
+    return { success: false, output: 'Usage: nice <priority> <pid>' };
+  }
+  
+  try {
+    const priority = parseInt(args[0], 10);
+    const pid = parseInt(args[1], 10);
+    
+    if (isNaN(priority) || isNaN(pid)) {
+      return { success: false, output: 'nice: priority and pid must be numbers' };
+    }
+    
+    return processManager.setProcessPriority(pid, priority);
+  } catch (error) {
+    return { success: false, output: `nice: ${error.message}` };
+  }
+};
+
+const handleDisk = () => {
+  try {
+    const diskInfo = hardwareSimulator.getDetailedStorageInfo();
+    return { success: true, output: diskInfo };
+  } catch (error) {
+    return { success: false, output: `disk: ${error.message}` };
+  }
+};
+
+const handleNetwork = () => {
+  try {
+    const networkInfo = hardwareSimulator.getDetailedNetworkInfo();
+    return { success: true, output: networkInfo };
+  } catch (error) {
+    return { success: false, output: `network: ${error.message}` };
   }
 }; 

@@ -40,7 +40,37 @@ const HelpPanel = ({ onClose }) => {
         { 
           command: 'rm', 
           description: 'Remove files or directories', 
-          usage: 'rm [options] file' 
+          usage: 'rm [-r] file' 
+        },
+        { 
+          command: 'cp', 
+          description: 'Copy files or directories', 
+          usage: 'cp source destination' 
+        },
+        { 
+          command: 'mv', 
+          description: 'Move/rename files or directories', 
+          usage: 'mv source destination' 
+        },
+        { 
+          command: 'chmod', 
+          description: 'Change file permissions', 
+          usage: 'chmod permissions file' 
+        },
+        { 
+          command: 'pwd', 
+          description: 'Print current working directory', 
+          usage: 'pwd' 
+        },
+        { 
+          command: 'find', 
+          description: 'Search for files matching a pattern', 
+          usage: 'find directory -name pattern' 
+        },
+        { 
+          command: 'grep', 
+          description: 'Search for a pattern in file(s)', 
+          usage: 'grep pattern file' 
         },
         { 
           command: 'ps', 
@@ -53,6 +83,16 @@ const HelpPanel = ({ onClose }) => {
           usage: 'top' 
         },
         { 
+          command: 'kill', 
+          description: 'Terminate a process by PID', 
+          usage: 'kill pid' 
+        },
+        { 
+          command: 'nice', 
+          description: 'Change process priority', 
+          usage: 'nice priority pid' 
+        },
+        { 
           command: 'memory', 
           description: 'Display memory usage', 
           usage: 'memory' 
@@ -61,6 +101,16 @@ const HelpPanel = ({ onClose }) => {
           command: 'cpu', 
           description: 'Display CPU information', 
           usage: 'cpu' 
+        },
+        { 
+          command: 'disk', 
+          description: 'Display disk usage statistics', 
+          usage: 'disk' 
+        },
+        { 
+          command: 'network', 
+          description: 'Display network interface information', 
+          usage: 'network' 
         }
       ]
     },
@@ -82,6 +132,18 @@ const HelpPanel = ({ onClose }) => {
         {
           concept: 'CPU Resource Allocation',
           description: 'CPU scheduling determines which processes run when and for how long, balancing performance, fairness, and system responsiveness.'
+        },
+        {
+          concept: 'File Permissions',
+          description: 'File permissions control which users can read, write, or execute files. In Unix-like systems, permissions are represented using a combination of letters (r, w, x) or octal numbers (e.g., 755).'
+        },
+        {
+          concept: 'Process States',
+          description: 'Processes can exist in different states: running (executing on CPU), waiting (for an event or resource), ready (waiting to be scheduled), stopped (paused), or zombie (terminated but entry remains in process table).'
+        },
+        {
+          concept: 'I/O Operations',
+          description: 'Input/Output operations handle data transfer between the computer and external devices. The OS manages I/O requests, buffering, and device drivers.'
         }
       ]
     },
@@ -94,24 +156,46 @@ const HelpPanel = ({ onClose }) => {
         <h4 class="font-bold mt-4 mb-1">Basic Navigation</h4>
         <p class="mb-2">Start by trying these commands:</p>
         <ul class="list-disc pl-5 mb-3">
+          <li><code>pwd</code> - Shows your current directory</li>
           <li><code>ls</code> - Shows all files in the current directory</li>
           <li><code>cd Documents</code> - Changes to the Documents directory</li>
           <li><code>mkdir NewFolder</code> - Creates a new directory</li>
         </ul>
         
         <h4 class="font-bold mt-4 mb-1">Working with Files</h4>
-        <p class="mb-2">Try creating and viewing files:</p>
+        <p class="mb-2">Try creating and manipulating files:</p>
         <ul class="list-disc pl-5 mb-3">
           <li><code>touch hello.txt</code> - Creates a new empty file</li>
           <li><code>cat hello.txt</code> - Displays the file contents</li>
+          <li><code>cp hello.txt hello_copy.txt</code> - Copies a file</li>
+          <li><code>mv hello_copy.txt renamed.txt</code> - Renames a file</li>
+          <li><code>chmod 755 hello.txt</code> - Changes file permissions</li>
+          <li><code>find . -name "*.txt"</code> - Finds all .txt files</li>
+        </ul>
+        
+        <h4 class="font-bold mt-4 mb-1">Process Management</h4>
+        <p class="mb-2">Try these commands to work with processes:</p>
+        <ul class="list-disc pl-5 mb-3">
+          <li><code>ps</code> - Shows running processes</li>
+          <li><code>top</code> - Shows real-time process activity</li>
+          <li><code>kill 1234</code> - Terminates process with PID 1234</li>
+          <li><code>nice 10 1234</code> - Changes priority of process 1234</li>
         </ul>
         
         <h4 class="font-bold mt-4 mb-1">System Information</h4>
         <p class="mb-2">Try these commands to see system information:</p>
         <ul class="list-disc pl-5 mb-3">
-          <li><code>ps</code> - Shows running processes</li>
-          <li><code>top</code> - Shows system performance</li>
           <li><code>memory</code> - Shows memory usage</li>
+          <li><code>cpu</code> - Shows CPU usage and information</li>
+          <li><code>disk</code> - Shows disk usage statistics</li>
+          <li><code>network</code> - Shows network interfaces and activity</li>
+        </ul>
+
+        <h4 class="font-bold mt-4 mb-1">Try switching to the Hardware and Processes tabs</h4>
+        <p class="mb-2">The UI also provides graphical interfaces for:</p>
+        <ul class="list-disc pl-5 mb-3">
+          <li>Hardware monitoring with real-time graphs and statistics</li>
+          <li>Process management with the ability to create, inspect, and terminate processes</li>
         </ul>
       `
     }
