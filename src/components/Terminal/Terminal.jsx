@@ -12,6 +12,8 @@ const Terminal = () => {
   const inputRef = useRef(null);
   const terminalRef = useRef(null);
   const cursorRef = useRef(null);
+  const terminalHeaderRef = useRef(null);
+  const outputRef = useRef(null);
 
   // Blinking cursor effect
   useEffect(() => {
@@ -49,6 +51,27 @@ const Terminal = () => {
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+  
+  // Lookup current directory from VirtualFileSystem to update prompt
+  useEffect(() => {
+    // Try to get the current directory from local storage
+    try {
+      const savedFS = localStorage.getItem('virtualFileSystem');
+      if (savedFS) {
+        const fsData = JSON.parse(savedFS);
+        const currentPath = fsData.currentPath;
+        
+        // Format the path for display in prompt
+        const displayPath = currentPath === '/home/user' ? '~' : 
+                           currentPath === '/' ? '/' : 
+                           currentPath.replace('/home/user', '~');
+        
+        setPrompt(`user@os-simulator:${displayPath}$ `);
+      }
+    } catch (error) {
+      console.error('Error updating prompt:', error);
+    }
+  }, [commandHistory]); // Update prompt whenever command history changes
 
   const handleInputChange = (e) => {
     setCurrentInput(e.target.value);
@@ -85,13 +108,60 @@ const Terminal = () => {
       const commands = [
         'help', 'ls', 'cd', 'mkdir', 'touch', 'cat', 'rm', 'cp', 'mv', 
         'chmod', 'pwd', 'find', 'grep', 'ps', 'top', 'kill', 'nice', 
-        'memory', 'cpu', 'disk', 'network'
+        'memory', 'cpu', 'disk', 'network', 'clear'
       ];
       const match = commands.find(cmd => cmd.startsWith(currentInput));
       if (match) {
         setCurrentInput(match);
       }
     }
+    
+    // Handle Ctrl+L as an alternative for clear
+    if (e.key === 'l' && e.ctrlKey) {
+      e.preventDefault();
+      handleClearCommand();
+    }
+  };
+  
+  // Helper function to handle clear command
+  const handleClearCommand = (options = {}) => {
+    // Default options
+    const { preserveTitle = false, scrollToBottom = true, command = 'clear' } = options;
+    
+    // If we should preserve the title, only clear the output area
+    if (preserveTitle && outputRef.current) {
+      // Use a different approach to clear the terminal content
+      // while preserving the terminal header
+      const newHistoryItem = {
+        id: Date.now(),
+        command: command,
+        output: '',
+        success: true,
+        prompt: prompt
+      };
+      
+      // Keep only this command in history
+      setCommandHistory([newHistoryItem]);
+    } else {
+      // Otherwise clear the entire terminal history
+      setCommandHistory([{
+        id: Date.now(),
+        command: command,
+        output: '',
+        success: true,
+        prompt: prompt
+      }]);
+    }
+    
+    // Scroll to bottom if requested
+    if (scrollToBottom && terminalRef.current) {
+      setTimeout(() => {
+        terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
+      }, 0);
+    }
+    
+    // Set focus back to input
+    inputRef.current?.focus();
   };
 
   const handleSubmit = (e) => {
@@ -101,15 +171,25 @@ const Terminal = () => {
     
     const result = processCommand(currentInput);
     
-    setCommandHistory([
-      ...commandHistory, 
-      { 
+    // Handle the 'clear' command
+    if (result.clear) {
+      handleClearCommand({
+        preserveTitle: result.preserveTitle || false,
+        scrollToBottom: result.scrollToBottom || true,
+        command: currentInput
+      });
+    } else {
+      // Regular command, add to history with the current prompt
+      const newHistoryItem = { 
         id: Date.now(),
         command: currentInput,
         output: result.output,
-        success: result.success
-      }
-    ]);
+        success: result.success,
+        prompt: prompt // Store the current prompt with this command
+      };
+      
+      setCommandHistory([...commandHistory, newHistoryItem]);
+    }
     
     setCurrentInput('');
     setCommandIndex(-1);
@@ -121,7 +201,10 @@ const Terminal = () => {
       ref={terminalRef}
     >
       {/* Terminal Header - similar to window title bar */}
-      <div className="terminal-header flex items-center mb-3 p-1 bg-gray-800 rounded-t-md">
+      <div 
+        className="terminal-header flex items-center mb-3 p-1 bg-gray-800 rounded-t-md"
+        ref={terminalHeaderRef}
+      >
         <div className="flex space-x-2 ml-2">
           <div className="w-3 h-3 rounded-full bg-red-500"></div>
           <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
@@ -131,7 +214,10 @@ const Terminal = () => {
       </div>
       
       {/* Terminal Content Area with Scroll */}
-      <div className="flex-1 overflow-auto mb-2 px-2 text-gray-200">
+      <div 
+        className="flex-1 overflow-auto mb-2 px-2 text-gray-200"
+        ref={outputRef}
+      >
         <TerminalOutput history={commandHistory} prompt={prompt} />
       </div>
       

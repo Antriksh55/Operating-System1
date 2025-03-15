@@ -170,6 +170,9 @@ export class HardwareSimulator {
       }
     };
     
+    // System uptime in seconds
+    this.startTime = Date.now();
+    
     // Start the update interval
     this.updateInterval = setInterval(() => this.updateHardwareMetrics(), 1000);
   }
@@ -255,24 +258,25 @@ export class HardwareSimulator {
     this.usage.storage.iops.reads = Math.round(newReads * 50);
     this.usage.storage.iops.writes = Math.round(newWrites * 30);
     
-    // Update network activity for active interfaces
+    // Update network activity
     this.usage.network.interfaces.forEach(iface => {
-      if (iface.name === 'eth0') { // Only active interface
+      if (iface.name === 'eth0') {
+        // Connected interface - realistic fluctuations
         const prevDownload = iface.download.current;
         const prevUpload = iface.upload.current;
         
-        // Create realistic network traffic patterns
-        let newDownload = prevDownload + (Math.random() - 0.5);
-        let newUpload = prevUpload + (Math.random() * 0.4 - 0.2);
+        // Network traffic changes
+        let newDownload = prevDownload + (Math.random() * 0.4 - 0.2);
+        let newUpload = prevUpload + (Math.random() * 0.2 - 0.1);
         
-        // Simulate brief network bursts
+        // Occasional spikes
         if (Math.random() < 0.05) {
-          newDownload += 3 + Math.random() * 5;
-          newUpload += 0.5 + Math.random() * 1.5;
+          newDownload += 5 + Math.random() * 10;
+          newUpload += 1 + Math.random() * 3;
         }
         
         // Keep within reasonable bounds
-        newDownload = Math.max(0.02, Math.min(50, newDownload));
+        newDownload = Math.max(0.05, Math.min(25, newDownload));
         newUpload = Math.max(0.01, Math.min(10, newUpload));
         
         iface.download.current = parseFloat(newDownload.toFixed(2));
@@ -282,266 +286,365 @@ export class HardwareSimulator {
         iface.download.history.shift();
         iface.upload.history.shift();
         
-        // Update packet counters
-        const downloadPackets = Math.round(newDownload * 100);
-        const uploadPackets = Math.round(newUpload * 80);
+        // Update packet counts
+        iface.packets.received += Math.floor(newDownload * 100);
+        iface.packets.sent += Math.floor(newUpload * 100);
         
-        iface.packets.received += downloadPackets;
-        iface.packets.sent += uploadPackets;
-        
-        // Small chance of dropped or error packets
-        if (Math.random() < 0.01) {
-          iface.packets.errors += 1;
-        }
-        if (Math.random() < 0.05) {
-          iface.packets.dropped += Math.round(Math.random() * 3);
-        }
+        // Very occasional errors and drops
+        if (Math.random() < 0.01) iface.packets.errors += 1;
+        if (Math.random() < 0.03) iface.packets.dropped += 1;
       }
     });
     
-    // Update GPU metrics
+    // Update GPU
     const prevGpuUsage = this.usage.gpu.usage;
-    let newGpuUsage = prevGpuUsage + (Math.random() * 10 - 5);
+    let newGpuUsage = prevGpuUsage + (Math.random() * 4 - 2);
     
-    if (Math.random() < 0.02) {
-      newGpuUsage += 20 + Math.random() * 30;
+    // Occasional GPU load spikes
+    if (Math.random() < 0.03) {
+      newGpuUsage += 30 + Math.random() * 50;
     }
     
-    newGpuUsage = Math.max(1, Math.min(99, newGpuUsage));
-    
+    // Keep within bounds
+    newGpuUsage = Math.max(0, Math.min(100, newGpuUsage));
     this.usage.gpu.usage = Math.round(newGpuUsage);
-    this.usage.gpu.memoryUsed = Math.min(
-      this.specs.gpu.memory,
-      Math.round(256 + (newGpuUsage * 30))
-    );
+    
+    // GPU memory usage correlates somewhat with GPU usage
+    let newGpuMemory = this.usage.gpu.memoryUsed + (newGpuUsage - prevGpuUsage) * 10;
+    newGpuMemory = Math.max(256, Math.min(this.specs.gpu.memory - 256, newGpuMemory));
+    this.usage.gpu.memoryUsed = Math.round(newGpuMemory);
+    
+    // GPU temperature follows usage
     this.usage.gpu.temperature = Math.round(35 + (newGpuUsage / 5));
   }
   
   /**
-   * Get current CPU usage with basic information
+   * Get the current CPU usage
+   * @returns {Object} Current CPU usage with success status
    */
   getCpuUsage() {
-    return {
-      success: true,
-      output: `CPU Usage: ${this.usage.cpu.current}%
-Temperature: ${this.usage.cpu.temperature}°C
-User: ${this.usage.cpu.distribution.user}% | System: ${this.usage.cpu.distribution.system}% | I/O: ${this.usage.cpu.distribution.io}% | Idle: ${this.usage.cpu.distribution.idle}%
-Model: ${this.specs.cpu.model} (${this.specs.cpu.cores} cores, ${this.specs.cpu.threads} threads)`
-    };
+    try {
+      return {
+        success: true,
+        usage: this.usage.cpu.current
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: `Error getting CPU usage: ${error.message}`
+      };
+    }
   }
   
   /**
-   * Get current memory usage with basic information
+   * Get current memory usage
+   * @returns {Object} Memory usage information with success status
    */
   getMemoryUsage() {
-    const usedPercentage = Math.round((this.usage.memory.used / this.specs.memory.total) * 100);
-    
-    return {
-      success: true,
-      output: `Memory Usage: ${this.usage.memory.used}MB / ${this.specs.memory.total}MB (${usedPercentage}%)
-Free: ${this.usage.memory.free}MB
-Cached: ${this.usage.memory.cached}MB
-Buffers: ${this.usage.memory.buffers}MB
-Swap: ${this.usage.memory.swapUsed}MB / ${this.usage.memory.swapTotal}MB
-Type: ${this.specs.memory.technology} @ ${this.specs.memory.speed}MHz`
-    };
+    try {
+      const used = this.usage.memory.used;
+      const total = this.specs.memory.total;
+      const percentage = (used / total) * 100;
+      
+      return {
+        success: true,
+        used,
+        free: total - used,
+        total,
+        percentage
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: `Error getting memory usage: ${error.message}`
+      };
+    }
   }
   
   /**
    * Get detailed CPU information
+   * @returns {Object} Detailed CPU information with success status
    */
   getDetailedCpuInfo() {
-    const coreInfo = this.usage.cpu.perCore.map((core, index) => 
-      `Core ${index}: ${core.usage}% (${core.temperature}°C)`
-    ).join('\n');
-    
-    return {
-      success: true,
-      output: `=== CPU Information ===
-Model: ${this.specs.cpu.model}
-Architecture: ${this.specs.cpu.architecture}
-Cores: ${this.specs.cpu.cores} physical, ${this.specs.cpu.threads} logical
-Clock Speed: ${this.specs.cpu.clockSpeed} GHz
-Cache: L1: ${this.specs.cpu.cache.l1}, L2: ${this.specs.cpu.cache.l2}, L3: ${this.specs.cpu.cache.l3}
-
-=== CPU Usage ===
-Current Usage: ${this.usage.cpu.current}%
-Temperature: ${this.usage.cpu.temperature}°C
-
-=== Usage Distribution ===
-User: ${this.usage.cpu.distribution.user}%
-System: ${this.usage.cpu.distribution.system}%
-I/O Wait: ${this.usage.cpu.distribution.io}%
-Idle: ${this.usage.cpu.distribution.idle}%
-
-=== Core Usage ===
-${coreInfo}
-
-=== Last 10s Usage Trend ===
-${this.usage.cpu.history.slice(-10).map(val => Math.round(val)).join('% → ')}%`
-    };
+    try {
+      // Calculate 1-minute and 5-minute average CPU usage
+      const last60Readings = this.usage.cpu.history;
+      const average1min = last60Readings.slice(-60).reduce((a, b) => a + b, 0) / 60;
+      const average5min = last60Readings.reduce((a, b) => a + b, 0) / last60Readings.length;
+      
+      return {
+        success: true,
+        info: {
+          model: this.specs.cpu.model,
+          cores: this.specs.cpu.cores,
+          threads: this.specs.cpu.threads,
+          clockSpeed: this.specs.cpu.clockSpeed,
+          architecture: this.specs.cpu.architecture,
+          cache: this.specs.cpu.cache,
+          usage: {
+            current: this.usage.cpu.current,
+            average1min,
+            average5min
+          },
+          temperature: this.usage.cpu.temperature,
+          distribution: this.usage.cpu.distribution,
+          perCore: this.usage.cpu.perCore
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: `Error getting detailed CPU info: ${error.message}`
+      };
+    }
   }
   
   /**
    * Get detailed memory information
+   * @returns {Object} Detailed memory information with success status
    */
   getDetailedMemoryInfo() {
-    const usedPercentage = Math.round((this.usage.memory.used / this.specs.memory.total) * 100);
-    const swapPercentage = Math.round((this.usage.memory.swapUsed / this.usage.memory.swapTotal) * 100);
-    
-    // Create a simple ASCII visualization of memory usage
-    const barLength = 40;
-    const usedChars = Math.round((this.usage.memory.used / this.specs.memory.total) * barLength);
-    const memoryBar = '[' + '#'.repeat(usedChars) + '-'.repeat(barLength - usedChars) + ']';
-    
-    return {
-      success: true,
-      output: `=== Memory Information ===
-Total Memory: ${this.formatBytes(this.specs.memory.total * 1024 * 1024)}
-Technology: ${this.specs.memory.technology}
-Speed: ${this.specs.memory.speed} MHz
-Channels: ${this.specs.memory.channels}
-Timings: ${this.specs.memory.timing}
-
-=== Memory Usage ===
-Used: ${this.formatBytes(this.usage.memory.used * 1024 * 1024)} (${usedPercentage}%)
-Free: ${this.formatBytes(this.usage.memory.free * 1024 * 1024)}
-Cached: ${this.formatBytes(this.usage.memory.cached * 1024 * 1024)}
-Buffers: ${this.formatBytes(this.usage.memory.buffers * 1024 * 1024)}
-
-${memoryBar} ${usedPercentage}%
-
-=== Swap ===
-Total Swap: ${this.formatBytes(this.usage.memory.swapTotal * 1024 * 1024)}
-Used Swap: ${this.formatBytes(this.usage.memory.swapUsed * 1024 * 1024)} (${swapPercentage}%)
-
-=== Last 10s Memory Trend (MB) ===
-${this.usage.memory.history.slice(-10).map(val => Math.round(val)).join(' → ')}`
-    };
+    try {
+      const used = this.usage.memory.used;
+      const total = this.specs.memory.total;
+      const percentage = (used / total) * 100;
+      
+      return {
+        success: true,
+        info: {
+          total,
+          used,
+          free: total - used,
+          percentage,
+          cached: this.usage.memory.cached,
+          buffers: this.usage.memory.buffers,
+          swapTotal: this.usage.memory.swapTotal,
+          swapUsed: this.usage.memory.swapUsed,
+          swapFree: this.usage.memory.swapTotal - this.usage.memory.swapUsed,
+          technology: this.specs.memory.technology,
+          speed: this.specs.memory.speed,
+          channels: this.specs.memory.channels,
+          // Calculate allocation proportions
+          system: Math.round(used * 0.3), // 30% system
+          userProcesses: Math.round(used * 0.5), // 50% user processes
+          shared: Math.round(used * 0.2) // 20% shared
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: `Error getting detailed memory info: ${error.message}`
+      };
+    }
   }
   
   /**
    * Get detailed storage information
+   * @returns {Object} Detailed storage information with success status
    */
   getDetailedStorageInfo() {
-    const deviceInfo = this.specs.storage.devices.map(device => {
-      const partitionInfo = device.partitions.map(part => {
-        const usedPercentage = Math.round((part.used / part.size) * 100);
-        const barLength = 20;
-        const usedChars = Math.round((part.used / part.size) * barLength);
-        const bar = '[' + '#'.repeat(usedChars) + '-'.repeat(barLength - usedChars) + ']';
-        
-        return `  ${part.name} (${part.mountPoint}):
-    Size: ${this.formatBytes(part.size * 1024 * 1024)}
-    Used: ${this.formatBytes(part.used * 1024 * 1024)} (${usedPercentage}%)
-    ${bar} ${usedPercentage}%`;
-      }).join('\n\n');
+    try {
+      // Calculate total storage metrics
+      let totalSize = 0;
+      let totalUsed = 0;
+      let totalFree = 0;
       
-      return `${device.name} - ${device.model}
-Type: ${device.type}
-Interface: ${device.interface}
-Total Size: ${this.formatBytes(device.total * 1024 * 1024)}
-Speed: ${device.speed}
-
-Partitions:
-${partitionInfo}`;
-    }).join('\n\n===\n\n');
-    
-    return {
-      success: true,
-      output: `=== Storage Information ===
-
-${deviceInfo}
-
-=== Disk Activity ===
-Current Read: ${this.usage.storage.reads.current} MB/s (${this.usage.storage.iops.reads} IOPS)
-Current Write: ${this.usage.storage.writes.current} MB/s (${this.usage.storage.iops.writes} IOPS)
-
-=== Last 10s Activity Trend ===
-Reads (MB/s): ${this.usage.storage.reads.history.slice(-10).map(val => val.toFixed(1)).join(' → ')}
-Writes (MB/s): ${this.usage.storage.writes.history.slice(-10).map(val => val.toFixed(1)).join(' → ')}`
-    };
+      const storageDevices = this.specs.storage.devices;
+      const partitions = [];
+      
+      // Process each storage device
+      storageDevices.forEach(device => {
+        const deviceSize = device.total / 1024; // Convert MB to GB
+        totalSize += deviceSize;
+        
+        let deviceUsed = 0;
+        
+        // Process partitions for this device
+        device.partitions.forEach(partition => {
+          const partitionSize = partition.size / 1024;
+          const partitionUsed = partition.used / 1024;
+          const partitionFree = partitionSize - partitionUsed;
+          const percentage = (partitionUsed / partitionSize) * 100;
+          
+          deviceUsed += partitionUsed;
+          
+          partitions.push({
+            name: partition.name,
+            mountPoint: partition.mountPoint,
+            size: partitionSize,
+            used: partitionUsed,
+            free: partitionFree,
+            percentage
+          });
+        });
+        
+        totalUsed += deviceUsed;
+      });
+      
+      totalFree = totalSize - totalUsed;
+      const percentage = (totalUsed / totalSize) * 100;
+      
+      // Create mount points information
+      const mountpoints = [
+        { path: '/', device: '/dev/sda1', type: 'ext4', options: 'rw,relatime' },
+        { path: '/home', device: '/dev/sda2', type: 'ext4', options: 'rw,relatime' },
+        { path: '/mnt/data', device: '/dev/sdb1', type: 'ext4', options: 'rw,relatime' }
+      ];
+      
+      return {
+        success: true,
+        info: {
+          total: parseFloat(totalSize.toFixed(1)),
+          used: parseFloat(totalUsed.toFixed(1)),
+          free: parseFloat(totalFree.toFixed(1)),
+          percentage,
+          devices: storageDevices.map(device => ({
+            name: device.name,
+            model: device.model,
+            type: device.type,
+            size: device.total / 1024, // Convert MB to GB
+            interface: device.interface,
+            speed: device.speed
+          })),
+          partitions,
+          mountpoints,
+          activity: {
+            reads: this.usage.storage.reads.current,
+            writes: this.usage.storage.writes.current,
+            iops: this.usage.storage.iops
+          }
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: `Error getting detailed storage info: ${error.message}`
+      };
+    }
   }
   
   /**
    * Get detailed network information
+   * @returns {Object} Detailed network information with success status
    */
   getDetailedNetworkInfo() {
-    const interfaceInfo = this.specs.network.interfaces.map((iface, index) => {
-      const usageIface = this.usage.network.interfaces[index];
-      const isActive = iface.status === 'connected';
+    try {
+      const networkInterfaces = this.usage.network.interfaces.map(iface => {
+        const networkInfo = this.specs.network.interfaces.find(ni => ni.name === iface.name);
+        
+        // Calculate total bytes transferred
+        const rx_bytes = iface.packets.received * 1500; // Approx avg packet size
+        const tx_bytes = iface.packets.sent * 1500;
+        
+        return {
+          name: iface.name,
+          type: networkInfo?.type || 'Unknown',
+          status: networkInfo?.status || 'unknown',
+          speed: networkInfo?.speed || 0,
+          mac: networkInfo?.macAddress || '00:00:00:00:00:00',
+          ipv4: networkInfo?.ipv4 || '',
+          ipv6: networkInfo?.ipv6 || '',
+          rx_bytes,
+          tx_bytes,
+          rx_packets: iface.packets.received,
+          tx_packets: iface.packets.sent,
+          errors: iface.packets.errors,
+          dropped: iface.packets.dropped,
+          download: {
+            current: iface.download.current,
+            history: iface.download.history
+          },
+          upload: {
+            current: iface.upload.current,
+            history: iface.upload.history
+          }
+        };
+      });
       
-      let output = `${iface.name} (${iface.type}):
-Status: ${iface.status}
-MAC Address: ${iface.macAddress}`;
-      
-      if (isActive) {
-        output += `
-Speed: ${iface.speed} Mbps
-IPv4: ${iface.ipv4}
-IPv6: ${iface.ipv6}
-
-Current Traffic:
-  Download: ${usageIface.download.current} MB/s
-  Upload: ${usageIface.upload.current} MB/s
-
-Packets:
-  Received: ${usageIface.packets.received.toLocaleString()}
-  Sent: ${usageIface.packets.sent.toLocaleString()}
-  Errors: ${usageIface.packets.errors}
-  Dropped: ${usageIface.packets.dropped}
-
-Traffic Trend (Last 10s):
-  Download (MB/s): ${usageIface.download.history.slice(-10).map(val => val.toFixed(2)).join(' → ')}
-  Upload (MB/s): ${usageIface.upload.history.slice(-10).map(val => val.toFixed(2)).join(' → ')}`;
-      }
-      
-      return output;
-    }).join('\n\n===\n\n');
-    
-    return {
-      success: true,
-      output: `=== Network Information ===
-
-${interfaceInfo}`
-    };
+      return {
+        success: true,
+        info: {
+          hostname: 'virtualmachine',
+          domain: 'localdomain',
+          interfaces: networkInterfaces
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: `Error getting detailed network info: ${error.message}`
+      };
+    }
   }
   
   /**
    * Get detailed GPU information
+   * @returns {Object} Detailed GPU information with success status
    */
   getDetailedGpuInfo() {
-    const usedPercentage = Math.round((this.usage.gpu.memoryUsed / this.specs.gpu.memory) * 100);
-    
-    return {
-      success: true,
-      output: `=== GPU Information ===
-Model: ${this.specs.gpu.model}
-Memory: ${this.specs.gpu.memory} MB
-Interface: ${this.specs.gpu.interface}
-Driver: ${this.specs.gpu.driver}
-
-=== GPU Usage ===
-Utilization: ${this.usage.gpu.usage}%
-Memory Usage: ${this.usage.gpu.memoryUsed} MB / ${this.specs.gpu.memory} MB (${usedPercentage}%)
-Temperature: ${this.usage.gpu.temperature}°C`
-    };
+    try {
+      return {
+        success: true,
+        info: {
+          model: this.specs.gpu.model,
+          memory: {
+            total: this.specs.gpu.memory,
+            used: this.usage.gpu.memoryUsed,
+            free: this.specs.gpu.memory - this.usage.gpu.memoryUsed,
+            percentage: (this.usage.gpu.memoryUsed / this.specs.gpu.memory) * 100
+          },
+          usage: this.usage.gpu.usage,
+          temperature: this.usage.gpu.temperature,
+          interface: this.specs.gpu.interface,
+          driver: this.specs.gpu.driver
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: `Error getting detailed GPU info: ${error.message}`
+      };
+    }
   }
   
   /**
-   * Format bytes to a human-readable format
+   * Get system uptime
+   * @returns {string} Formatted uptime string
    */
-  formatBytes(bytes) {
-    if (bytes === 0) return '0 B';
+  getUptime() {
+    const uptimeSeconds = Math.floor((Date.now() - this.startTime) / 1000);
+    const days = Math.floor(uptimeSeconds / 86400);
+    const hours = Math.floor((uptimeSeconds % 86400) / 3600);
+    const minutes = Math.floor((uptimeSeconds % 3600) / 60);
+    const seconds = uptimeSeconds % 60;
     
-    const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    
-    return parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + ' ' + units[i];
+    if (days > 0) {
+      return `${days}d ${hours}h ${minutes}m ${seconds}s`;
+    } else if (hours > 0) {
+      return `${hours}h ${minutes}m ${seconds}s`;
+    } else {
+      return `${minutes}m ${seconds}s`;
+    }
   }
   
   /**
-   * Clean up and stop update interval when done
+   * Format bytes to human-readable string
+   * @param {number} bytes - Bytes to format
+   * @param {number} [decimals=2] - Number of decimal places
+   * @returns {string} Formatted size string
+   */
+  formatBytes(bytes, decimals = 2) {
+    if (bytes === 0) return '0 Bytes';
+    
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(decimals)) + ' ' + sizes[i];
+  }
+  
+  /**
+   * Clean up resources
    */
   destroy() {
     if (this.updateInterval) {

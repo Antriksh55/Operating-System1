@@ -73,6 +73,11 @@ const HelpPanel = ({ onClose }) => {
           usage: 'grep pattern file' 
         },
         { 
+          command: 'clear', 
+          description: 'Clear the terminal screen', 
+          usage: 'clear' 
+        },
+        { 
           command: 'ps', 
           description: 'Report process status', 
           usage: 'ps [options]' 
@@ -160,6 +165,7 @@ const HelpPanel = ({ onClose }) => {
           <li><code>ls</code> - Shows all files in the current directory</li>
           <li><code>cd Documents</code> - Changes to the Documents directory</li>
           <li><code>mkdir NewFolder</code> - Creates a new directory</li>
+          <li><code>clear</code> - Clears the terminal screen</li>
         </ul>
         
         <h4 class="font-bold mt-4 mb-1">Working with Files</h4>

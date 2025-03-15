@@ -6,6 +6,7 @@ const TerminalOutput = ({ history, prompt }) => {
       <div className="text-green-400 font-bold mb-1">OS Simulator Terminal v1.0</div>
       <div className="text-green-300 mb-1">Welcome to Virtual OS Simulator!</div>
       <div className="text-gray-400 mb-1">Type 'help' to see available commands.</div>
+      <div className="text-gray-400 mb-1">Your files and directories will be saved in localStorage.</div>
       <div className="text-yellow-500 text-xs mb-1">Current time: {new Date().toLocaleString()}</div>
       <div className="text-gray-500 mb-2">------------------------------------------</div>
     </div>
@@ -61,13 +62,15 @@ const TerminalOutput = ({ history, prompt }) => {
       {history.map((item) => (
         <div key={item.id} className="command-block mb-3">
           <div className="command-line flex">
-            <span className="terminal-prompt text-green-400 mr-2">{prompt}</span>
+            <span className="terminal-prompt text-green-400 mr-2">{item.prompt || prompt}</span>
             <span className="command-text text-white font-bold">{item.command}</span>
           </div>
           
-          <div className={`command-output pl-4 mt-1`}>
-            {formatOutput(item.output, item.success)}
-          </div>
+          {item.output && (
+            <div className={`command-output pl-4 mt-1`}>
+              {formatOutput(item.output, item.success)}
+            </div>
+          )}
         </div>
       ))}
     </div>

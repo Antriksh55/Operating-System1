@@ -46,6 +46,7 @@ const Sidebar = ({ activeView }) => {
                   
                   <li className="font-semibold mb-2 mt-4">Help</li>
                   <li className="pl-2 py-1 cursor-pointer hover:bg-gray-800 rounded">help</li>
+                  <li className="pl-2 py-1 cursor-pointer hover:bg-gray-800 rounded">clear</li>
                 </>
               )}
               

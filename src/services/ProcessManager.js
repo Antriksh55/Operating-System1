@@ -163,322 +163,373 @@ export class ProcessManager {
    * @param {string} command - Command running the process
    * @param {number} priority - Process priority (Nice value)
    * @param {string} user - User running the process
-   * @returns {Object} Created process object
+   * @returns {Object} Response object with success/failure and process info
    */
   createProcess(name, command = '', priority = 0, user = 'user') {
-    // If name matches a template, use that as a base
-    let processTemplate = null;
-    if (this.processTemplates[name]) {
-      processTemplate = this.processTemplates[name];
+    try {
+      // If name matches a template, use that as a base
+      let processTemplate = null;
+      if (this.processTemplates[name]) {
+        processTemplate = this.processTemplates[name];
+      }
+      
+      // Get the next available PID
+      const pid = this.nextPid++;
+      
+      // Create the process with realistic values
+      const process = {
+        pid,
+        name: processTemplate ? processTemplate.name : name,
+        command: processTemplate ? processTemplate.command : (command || name),
+        state: this.PROCESS_STATES.RUNNING,
+        priority: priority,
+        nice: priority,
+        cpu: processTemplate ? processTemplate.cpuUsage : (Math.random() * 2),
+        memory: processTemplate ? processTemplate.memory : (Math.floor(Math.random() * 10000) + 1000), // Random memory between 1-11MB in KB
+        cpuPercent: 0, // Will be updated by scheduler
+        memoryPercent: 0, // Will be updated by scheduler
+        startTime: new Date(),
+        user,
+        threads: 1,
+        children: [],
+        descriptors: Math.floor(Math.random() * 10) + 3,
+        // If process has a lifespan, set endTime
+        endTime: processTemplate && processTemplate.lifespan > 0 ? new Date(Date.now() + processTemplate.lifespan) : null
+      };
+      
+      // Add the process to our list
+      this.processes.push(process);
+      
+      // Update stats
+      this.stats.totalCreated++;
+      this.stats.forks++;
+      
+      return {
+        success: true,
+        output: `Started process ${process.name} with PID ${pid}`,
+        process: process
+      };
+    } catch (error) {
+      return {
+        success: false,
+        output: `Failed to create process: ${error.message}`
+      };
     }
-    
-    // Get the next available PID
-    const pid = this.nextPid++;
-    
-    // Create the process with realistic values
-    const process = {
-      pid,
-      name: processTemplate ? processTemplate.name : name,
-      command: processTemplate ? processTemplate.command : (command || name),
-      state: this.PROCESS_STATES.RUNNING,
-      priority: priority,
-      nice: priority,
-      cpu: processTemplate ? processTemplate.cpuUsage : (Math.random() * 2),
-      memory: processTemplate ? processTemplate.memory : (Math.floor(Math.random() * 10000) + 1000), // Random memory between 1-11MB in KB
-      cpuPercent: 0, // Will be updated by scheduler
-      memoryPercent: 0, // Will be updated by scheduler
-      startTime: new Date(),
-      user,
-      threads: 1,
-      children: [],
-      descriptors: Math.floor(Math.random() * 10) + 3,
-      // If process has a lifespan, set endTime
-      endTime: processTemplate && processTemplate.lifespan > 0 ? new Date(Date.now() + processTemplate.lifespan) : null
-    };
-    
-    // Add the process to our list
-    this.processes.push(process);
-    
-    // Update stats
-    this.stats.totalCreated++;
-    this.stats.forks++;
-    
-    return {
-      success: true,
-      output: `Started process ${process.name} with PID ${pid}`
-    };
   }
   
   /**
    * Kills a process by PID
    * @param {number} pid - Process ID to kill
-   * @returns {Object} Result of the operation
+   * @returns {Object} Response object with success/failure and message
    */
   killProcess(pid) {
-    // Convert pid to number if it's a string
-    pid = parseInt(pid, 10);
-    
-    // Find the process
-    const index = this.processes.findIndex(p => p.pid === pid);
-    
-    // If process not found
-    if (index === -1) {
-      return { success: false, output: `No process found with PID ${pid}` };
-    }
-    
-    // Don't allow killing init (PID 1)
-    if (pid === 1) {
-      return { success: false, output: `Cannot kill process with PID 1 (init)` };
-    }
-    
-    // If process has children, make them zombies first
-    const childrenPids = this.processes[index].children;
-    for (const childPid of childrenPids) {
-      const childIndex = this.processes.findIndex(p => p.pid === childPid);
-      if (childIndex !== -1) {
-        this.processes[childIndex].state = this.PROCESS_STATES.ZOMBIE;
+    try {
+      // Convert pid to number if it's a string
+      pid = parseInt(pid, 10);
+      
+      // Find the process
+      const index = this.processes.findIndex(p => p.pid === pid);
+      
+      // If process not found
+      if (index === -1) {
+        return { success: false, output: `No process found with PID ${pid}` };
       }
+      
+      // Don't allow killing init (PID 1)
+      if (pid === 1) {
+        return { success: false, output: `Cannot kill process with PID 1 (init)` };
+      }
+      
+      // If process has children, make them zombies first
+      const childrenPids = this.processes[index].children;
+      for (const childPid of childrenPids) {
+        const childIndex = this.processes.findIndex(p => p.pid === childPid);
+        if (childIndex !== -1) {
+          this.processes[childIndex].state = this.PROCESS_STATES.ZOMBIE;
+        }
+      }
+      
+      // Remove the process
+      const process = this.processes[index];
+      this.processes.splice(index, 1);
+      
+      // Update stats
+      this.stats.totalKilled++;
+      
+      return {
+        success: true,
+        output: `Process ${pid} (${process.name}) terminated`
+      };
+    } catch (error) {
+      return {
+        success: false,
+        output: `Failed to kill process: ${error.message}`
+      };
     }
-    
-    // Remove the process
-    const process = this.processes[index];
-    this.processes.splice(index, 1);
-    
-    // Update stats
-    this.stats.totalKilled++;
-    
-    return {
-      success: true,
-      output: `Terminated process ${process.name} with PID ${pid}`
-    };
   }
   
   /**
-   * Lists all running processes in a simplified format
-   * @returns {Object} List of processes
+   * Lists all running processes
+   * @returns {Object} Response object with success/failure and processes
    */
   listProcesses() {
-    // Format the processes for display
-    const formattedProcesses = this.processes.map(p => 
-      `${p.pid.toString().padEnd(6)} ${p.user.padEnd(10)} ${p.state.padEnd(8)} ${p.cpuPercent.toFixed(1).padEnd(5)} ${p.memoryPercent.toFixed(1).padEnd(5)} ${this._formatStartTime(p.startTime).padEnd(14)} ${p.command}`
-    );
-    
-    return {
-      success: true,
-      output: `PID    USER       STATE    CPU   MEM   STARTED       COMMAND\n${formattedProcesses.join('\n')}`
-    };
+    try {
+      return {
+        success: true,
+        processes: [...this.processes]
+      };
+    } catch (error) {
+      return {
+        success: false,
+        output: `Failed to list processes: ${error.message}`,
+        processes: []
+      };
+    }
   }
   
   /**
-   * Gets the top processes sorted by CPU usage
-   * @param {number} limit - Maximum number of processes to return
-   * @returns {Object} Top processes by CPU usage
+   * Gets top processes sorted by CPU usage
+   * @returns {Object} Response object with success/failure and top processes
    */
   getTopProcesses() {
-    // Sort processes by CPU usage
-    const sortedProcesses = [...this.processes].sort((a, b) => b.cpuPercent - a.cpuPercent);
-    
-    // Create a header with system stats
-    const load1 = (Math.random() * 0.5 + 0.1).toFixed(2);
-    const load5 = (Math.random() * 0.4 + 0.2).toFixed(2);
-    const load15 = (Math.random() * 0.3 + 0.3).toFixed(2);
-    
-    // Get total CPU and memory
-    const totalCpu = this.processes.reduce((sum, p) => sum + p.cpuPercent, 0).toFixed(1);
-    const totalMem = this.processes.reduce((sum, p) => sum + p.memory, 0) / 1024; // Convert to MB
-    
-    const header = `Virtual OS - ${this._formatUptime()}
-Processes: ${this.processes.length} total, ${this.processes.filter(p => p.state === this.PROCESS_STATES.RUNNING).length} running, ${this.processes.filter(p => p.state === this.PROCESS_STATES.SLEEPING).length} sleeping, ${this.processes.filter(p => p.state === this.PROCESS_STATES.ZOMBIE).length} zombie
-Load Avg: ${load1}, ${load5}, ${load15}
-CPU Usage: ${totalCpu}% total
-Memory Usage: ${totalMem.toFixed(1)} MB total
-
-PID    USER       PRI  NI   STATE    CPU%   MEM%   TIME+    COMMAND`;
-    
-    // Format the processes for top display
-    const formattedProcesses = sortedProcesses.map(p => {
-      const runtime = Math.floor((Date.now() - p.startTime.getTime()) / 1000);
-      const minutes = Math.floor(runtime / 60);
-      const seconds = runtime % 60;
-      const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    try {
+      // Sort processes by CPU usage (highest first)
+      const sortedProcesses = [...this.processes].sort((a, b) => {
+        return b.cpuPercent - a.cpuPercent;
+      });
       
-      return `${p.pid.toString().padEnd(6)} ${p.user.padEnd(10)} ${p.priority.toString().padEnd(4)} ${p.nice.toString().padEnd(3)} ${p.state.padEnd(8)} ${p.cpuPercent.toFixed(1).padEnd(6)} ${p.memoryPercent.toFixed(1).padEnd(6)} ${timeStr.padEnd(8)} ${p.command}`;
-    });
-    
-    return {
-      success: true,
-      output: `${header}\n${formattedProcesses.join('\n')}`
-    };
+      // Get total memory
+      const totalMemory = 8 * 1024 * 1024; // 8GB in KB
+      
+      // Calculate memory percentage
+      sortedProcesses.forEach(proc => {
+        proc.memoryPercent = (proc.memory / totalMemory) * 100;
+      });
+      
+      // Format top output like real OS would
+      const cpuUsage = Math.min(99.9, this.processes.reduce((acc, proc) => acc + proc.cpuPercent, 0));
+      const memoryUsed = this.processes.reduce((acc, proc) => acc + proc.memory, 0);
+      const memoryPercentage = (memoryUsed / totalMemory) * 100;
+      
+      return {
+        success: true,
+        processes: sortedProcesses,
+        systemStats: {
+          cpuUsage: cpuUsage,
+          memoryUsed: Math.round(memoryUsed / 1024), // MB
+          memoryTotal: Math.round(totalMemory / 1024), // MB
+          memoryPercentage: memoryPercentage,
+          uptime: this._formatUptime(),
+          loadAvg: [cpuUsage / 100, (cpuUsage - 5) / 100, (cpuUsage - 10) / 100].map(v => Math.max(0, v).toFixed(2))
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        output: `Failed to get top processes: ${error.message}`,
+        processes: []
+      };
+    }
   }
   
   /**
-   * Gets a process by PID
-   * @param {number} pid - Process ID
-   * @returns {Object} Process object or null
+   * Gets detailed information about a specific process
+   * @param {number} pid - Process ID to query
+   * @returns {Object} Response object with success/failure and process details
    */
   getProcessByPid(pid) {
-    // Convert pid to number if it's a string
-    pid = parseInt(pid, 10);
-    
-    const process = this.processes.find(p => p.pid === pid);
-    
-    if (!process) {
-      return { success: false, output: `No process found with PID ${pid}` };
+    try {
+      // Convert pid to number if it's a string
+      pid = parseInt(pid, 10);
+      
+      // Find the process
+      const process = this.processes.find(p => p.pid === pid);
+      
+      // If process not found
+      if (!process) {
+        return { success: false, output: `No process found with PID ${pid}` };
+      }
+      
+      // Format the output like ps would
+      const output = [
+        `PID: ${process.pid}`,
+        `Name: ${process.name}`,
+        `User: ${process.user}`,
+        `State: ${process.state}`,
+        `Priority: ${process.priority}`,
+        `Nice Value: ${process.nice}`,
+        `CPU Usage: ${process.cpuPercent.toFixed(1)}%`,
+        `Memory: ${(process.memory / 1024).toFixed(1)} MB`,
+        `Start Time: ${this._formatStartTime(process.startTime)}`,
+        `Command: ${process.command}`,
+        `Threads: ${process.threads}`,
+        `Open FDs: ${process.descriptors}`,
+        `Child Processes: ${process.children.join(', ') || 'None'}`
+      ].join('\n');
+      
+      return {
+        success: true,
+        output,
+        process
+      };
+    } catch (error) {
+      return {
+        success: false,
+        output: `Failed to get process details: ${error.message}`
+      };
     }
-    
-    // Format the detailed process info
-    const detail = `Process ID: ${process.pid}
-Name: ${process.name}
-Command: ${process.command}
-State: ${process.state}
-User: ${process.user}
-Priority: ${process.priority} (nice ${process.nice})
-CPU Usage: ${process.cpuPercent.toFixed(1)}%
-Memory: ${(process.memory / 1024).toFixed(2)} MB (${process.memoryPercent.toFixed(1)}%)
-Started: ${process.startTime.toLocaleString()}
-Threads: ${process.threads}
-Open File Descriptors: ${process.descriptors}
-Children: ${process.children.join(', ') || 'none'}`;
-    
-    return { success: true, output: detail };
   }
   
   /**
-   * Sets the priority of a process
-   * @param {number} pid - Process ID
-   * @param {number} priority - New priority (nice value, -20 to 19)
-   * @returns {Object} Result of the operation
+   * Changes a process's priority (nice value)
+   * @param {number} pid - Process ID to modify
+   * @param {number} priority - New priority (-20 to 19)
+   * @returns {Object} Response object with success/failure and message
    */
   setProcessPriority(pid, priority) {
-    // Convert pid and priority to numbers if they're strings
-    pid = parseInt(pid, 10);
-    priority = parseInt(priority, 10);
-    
-    // Validate priority range
-    if (priority < -20 || priority > 19) {
-      return { success: false, output: `Invalid priority value. Must be between -20 and 19.` };
+    try {
+      // Convert pid and priority to numbers
+      pid = parseInt(pid, 10);
+      priority = parseInt(priority, 10);
+      
+      // Validate priority value
+      if (isNaN(priority) || priority < -20 || priority > 19) {
+        return { success: false, output: `Invalid priority value: ${priority}. Must be between -20 and 19.` };
+      }
+      
+      // Find the process
+      const process = this.processes.find(p => p.pid === pid);
+      
+      // If process not found
+      if (!process) {
+        return { success: false, output: `No process found with PID ${pid}` };
+      }
+      
+      // Update the priority
+      process.nice = priority;
+      process.priority = priority;
+      
+      return {
+        success: true,
+        output: `Changed priority of process ${pid} to ${priority}`
+      };
+    } catch (error) {
+      return {
+        success: false,
+        output: `Failed to set process priority: ${error.message}`
+      };
     }
-    
-    // Find the process
-    const process = this.processes.find(p => p.pid === pid);
-    
-    if (!process) {
-      return { success: false, output: `No process found with PID ${pid}` };
-    }
-    
-    // Update the priority
-    process.priority = priority;
-    process.nice = priority;
-    
-    return {
-      success: true,
-      output: `Set priority of process ${process.name} (PID ${pid}) to ${priority}`
-    };
   }
   
   /**
-   * Simulates process scheduling and updates process states
+   * Scheduler function to periodically update process states
+   * Simulates real OS process scheduling
    */
   scheduleProcesses() {
-    // Increment system uptime
+    // Increment uptime
     this.uptime += 1;
+    
+    // Update context switches
+    this.stats.contextSwitches += Math.floor(Math.random() * 100);
     
     // Update each process
     for (let i = 0; i < this.processes.length; i++) {
       const process = this.processes[i];
       
-      // Randomly change process state for some processes
-      if (process.pid > 10 && Math.random() < 0.1) {
-        // 10% chance to change state for non-system processes
-        const stateValues = Object.values(this.PROCESS_STATES);
-        const randomState = stateValues[Math.floor(Math.random() * (stateValues.length - 1))]; // Exclude zombie state
-        process.state = randomState;
-      }
+      // Skip kernel processes
+      if (process.pid < 10) continue;
       
-      // Fluctuate CPU usage based on process state
+      // Random state changes
+      const rand = Math.random();
+      
+      // Update CPU usage (fluctuating)
       if (process.state === this.PROCESS_STATES.RUNNING) {
-        // Randomize CPU usage fluctuation for running processes
-        process.cpuPercent = Math.max(0, process.cpu + (Math.random() * 2 - 1) * process.cpu * 0.3);
-      } else if (process.state === this.PROCESS_STATES.SLEEPING || process.state === this.PROCESS_STATES.WAITING) {
+        // Base CPU value plus some randomness
+        const baseCpu = process.cpu;
+        // Add random fluctuation (-0.5 to +0.5)
+        const fluctuation = (Math.random() - 0.5);
+        // Apply fluctuation but don't go below 0
+        process.cpuPercent = Math.max(0, baseCpu + fluctuation);
+        
+        // Occasionally put process to sleep
+        if (rand < 0.05 && process.pid !== 1) { // 5% chance
+          process.state = this.PROCESS_STATES.SLEEPING;
+          process.cpuPercent = 0;
+        }
+      } else if (process.state === this.PROCESS_STATES.SLEEPING) {
+        // Sleeping processes don't use CPU
         process.cpuPercent = 0;
+        
+        // Occasionally wake up
+        if (rand < 0.1) { // 10% chance
+          process.state = this.PROCESS_STATES.RUNNING;
+        }
       } else if (process.state === this.PROCESS_STATES.ZOMBIE) {
-        process.cpuPercent = 0;
-        // Zombies eventually get cleaned up
-        if (Math.random() < 0.2) {
+        // Zombie processes get cleaned up after a while
+        if (rand < 0.2) { // 20% chance
           this.processes.splice(i, 1);
-          i--;
+          i--; // Adjust index since we removed an element
           continue;
         }
       }
       
-      // Calculate memory percentage based on total system memory (using 8GB as baseline)
-      process.memoryPercent = (process.memory / 1024) / 8192 * 100;
-      
-      // Check if the process has reached its end time and should be terminated
-      if (process.endTime && Date.now() >= process.endTime.getTime()) {
-        // Mark as zombie first
-        process.state = this.PROCESS_STATES.ZOMBIE;
-        process.cpuPercent = 0;
+      // If process has an endTime and it's past that time, terminate it
+      if (process.endTime && new Date() > process.endTime) {
+        // Remove the process
+        this.processes.splice(i, 1);
+        i--; // Adjust index since we removed an element
         
-        // 50% chance to fully remove the process in this cycle
-        if (Math.random() < 0.5) {
-          this.processes.splice(i, 1);
-          i--;
-          this.stats.totalKilled++;
-        }
+        // Update stats
+        this.stats.totalKilled++;
+        continue;
       }
+      
+      // Update memory usage (slight fluctuations)
+      const memoryFluctuation = (Math.random() - 0.5) * 100; // -50 to +50 KB
+      process.memory = Math.max(0, process.memory + memoryFluctuation);
     }
-    
-    // Randomly spawn new system processes
-    if (Math.random() < 0.05) {
-      // 5% chance to create a new background process
-      const systemProcessNames = ['sshd', 'cron', 'rsyslog', 'dbus-daemon', 'dhclient'];
-      const randomName = systemProcessNames[Math.floor(Math.random() * systemProcessNames.length)];
-      this.createProcess(randomName, `/usr/sbin/${randomName}`, 0, 'root');
-    }
-    
-    // Update stats
-    this.stats.contextSwitches += Math.floor(Math.random() * 100);
   }
   
   /**
-   * Formats the system uptime into a readable string
+   * Format uptime to HH:MM:SS format
    * @returns {string} Formatted uptime
    */
   _formatUptime() {
-    const days = Math.floor(this.uptime / 86400);
-    const hours = Math.floor((this.uptime % 86400) / 3600);
+    const hours = Math.floor(this.uptime / 3600);
     const minutes = Math.floor((this.uptime % 3600) / 60);
+    const seconds = this.uptime % 60;
     
-    let uptimeStr = '';
-    if (days > 0) {
-      uptimeStr += `${days} days, `;
+    let formattedUptime = '';
+    
+    if (hours > 0) {
+      formattedUptime = `${hours}h`;
     }
     
-    uptimeStr += `${hours}:${minutes.toString().padStart(2, '0')}`;
-    return uptimeStr;
+    formattedUptime += `${minutes}m${seconds}s`;
+    
+    return formattedUptime;
   }
   
   /**
-   * Formats a start time into a readable string
+   * Format start time relative to current time
    * @param {Date} startTime - Process start time
    * @returns {string} Formatted start time
    */
   _formatStartTime(startTime) {
     const now = new Date();
-    const timeDiff = now - startTime;
+    const diffInMs = now - startTime;
+    const diffInMins = Math.floor(diffInMs / 60000);
     
-    // If process started less than 24 hours ago, show time only
-    if (timeDiff < 86400000) {
-      return startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (diffInMins < 60) {
+      return `${diffInMins} min ago`;
+    } else {
+      const diffInHours = Math.floor(diffInMins / 60);
+      return `${diffInHours} hour${diffInHours !== 1 ? 's' : ''} ago`;
     }
-    
-    // Otherwise show date
-    return startTime.toLocaleDateString([], { month: 'short', day: 'numeric' });
   }
   
   /**
-   * Starts the process scheduler
+   * Start the process scheduler
    */
   startScheduler() {
     if (!this.schedulerInterval) {
@@ -487,7 +538,7 @@ Children: ${process.children.join(', ') || 'none'}`;
   }
   
   /**
-   * Stops the process scheduler
+   * Stop the process scheduler
    */
   stopScheduler() {
     if (this.schedulerInterval) {
@@ -497,9 +548,10 @@ Children: ${process.children.join(', ') || 'none'}`;
   }
   
   /**
-   * Clean up resources when destroying the manager
+   * Clean up resources
    */
   destroy() {
     this.stopScheduler();
+    this.processes = [];
   }
 } 
