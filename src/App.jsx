@@ -66,7 +66,7 @@ function App() {
 
       {/* Footer */}
       <footer className="bg-gray-800 text-white p-2 text-center text-sm">
-        <p>Virtual OS Simulator for Educational Purposes - © {new Date().getFullYear()}</p>
+        <p>Virtual OS Simulator for Educational Purposes - © {new Date().getFullYear()} {~Antriksh/Saurabh/Abhinav}</p>
       </footer>
     </div>
   )
